@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useUserProfile } from '../../hooks/useAccount';
+import { ConnectionIndicator } from '../pwa/ConnectionStatus';
 import Avatar from '../ui/Avatar';
 
 export function Logo() {
@@ -69,6 +70,7 @@ export default function NavBar() {
         </nav>
 
         <div className="navbar__actions">
+          <ConnectionIndicator />
           <button
             type="button"
             className="icon-btn"

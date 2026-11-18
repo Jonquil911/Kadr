@@ -2453,3 +2453,308 @@ a.tile:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* =====================================================================
+   PWA: индикатор сети, офлайн-режим, обновление приложения
+   ===================================================================== */
+
+.net-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.net-status.is-offline {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+}
+.net-status__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.is-offline .net-status__dot {
+  background: var(--danger);
+  animation: net-pulse 1.6s ease-in-out infinite;
+}
+@keyframes net-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.offline-banner {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 45;
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.offline-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block: 8px;
+}
+.offline-banner__inner svg {
+  flex: none;
+  color: var(--danger);
+}
+
+.cached-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--warn-soft);
+  font-size: 0.9rem;
+}
+.cached-notice svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--accent-text);
+}
+.cached-notice p {
+  margin: 0;
+  color: var(--muted);
+}
+.cached-notice strong {
+  color: var(--text);
+}
+.details__inner > .cached-notice {
+  position: relative;
+}
+
+.offline-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 560px;
+  margin: 40px auto;
+  padding: 40px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+}
+.offline-view--compact {
+  margin: 24px auto;
+  padding: 32px 20px;
+  box-shadow: none;
+}
+.offline-view__icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.offline-view--compact .offline-view__icon {
+  width: 56px;
+  height: 56px;
+}
+.offline-view__title {
+  margin: 4px 0 0;
+  font-size: clamp(1.35rem, 4.5vw, 1.8rem);
+  line-height: 1.2;
+}
+.offline-view__text {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--muted);
+}
+.offline-view__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.offline-view__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.offline-view__status .net-status__dot {
+  background: var(--danger);
+}
+.offline-view__status.is-online .net-status__dot {
+  background: var(--ok);
+}
+
+.diary-panel--offline {
+  color: var(--muted);
+}
+
+.pwa-update {
+  position: fixed;
+  z-index: 100;
+  left: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 14px 14px 14px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  animation: pop-in 0.2s var(--ease);
+}
+.pwa-update__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.pwa-update__text span {
+  color: var(--muted);
+}
+.pwa-update__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.is-spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+/* =====================================================================
+   Мобильная адаптация (от 320px) и сенсорные экраны
+   ===================================================================== */
+
+/* ничто не должно вызывать горизонтальную прокрутку страницы;
+   clip, в отличие от hidden, не ломает position: sticky у шапки */
+.app {
+  overflow-x: clip;
+}
+
+img,
+video,
+iframe {
+  max-width: 100%;
+}
+
+/* на сенсорных экранах — цели нажатия не меньше 44×44 px */
+@media (pointer: coarse) {
+  .btn,
+  .btn--sm {
+    min-height: 44px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .icon-btn--sm {
+    width: 40px;
+    height: 40px;
+  }
+  .navbar__links > a,
+  .navbar__auth--mobile a,
+  .cabinet__nav a {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* 16px — меньший размер заставляет iOS Safari приближать страницу при фокусе на поле */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .pwa-update {
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  .offline-view {
+    margin: 24px auto;
+    padding: 28px 18px;
+  }
+  .offline-view__actions {
+    flex-direction: column;
+    align-self: stretch;
+  }
+  .offline-view__actions .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  /* на узкой шапке остаётся только цветная точка, подпись — в aria-label */
+  .net-status {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .net-status__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .offline-banner {
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .navbar__actions {
+    gap: 4px;
+  }
+  .logo {
+    font-size: 1.3rem;
+  }
+}
+
+/* альбомная ориентация на телефоне: экран низкий, экономим высоту */
+@media (orientation: landscape) and (max-height: 500px) {
+  .offline-view {
+    margin: 16px auto;
+    padding: 20px;
+  }
+  .offline-view__icon {
+    width: 48px;
+    height: 48px;
+  }
+  .offline-banner__inner {
+    padding-block: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-offline .net-status__dot,
+  .is-spinning {
+    animation: none;
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "./",
+  "name": "Кадр — личный кинодневник",
+  "short_name": "Кадр",
+  "description": "Каталог фильмов и сериалов TMDB, личный дневник просмотров, оценки, подборки и статистика.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#151a2e",
+  "background_color": "#151a2e",
+  "categories": ["entertainment", "lifestyle"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { Outlet, ScrollRestoration } from 'react-router-dom';
+import { OfflineBanner } from '../pwa/ConnectionStatus';
 import NavBar from './NavBar';
 
 export default function Layout() {
@@ -8,6 +9,7 @@ export default function Layout() {
         Перейти к содержимому
       </a>
       <NavBar />
+      <OfflineBanner />
       <main id="main" className="app__main">
         <Outlet />
       </main>

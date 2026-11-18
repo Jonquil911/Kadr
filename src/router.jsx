@@ -5,6 +5,7 @@ import CatalogPage from './pages/CatalogPage';
 import DetailsPage from './pages/DetailsPage';
 import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
+import OfflinePage from './pages/OfflinePage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: '/tv', element: <CatalogPage key="tv" mediaType="tv" /> },
       { path: '/movie/:id', element: <DetailsPage mediaType="movie" /> },
       { path: '/tv/:id', element: <DetailsPage mediaType="tv" /> },
+      { path: '/offline', element: <OfflinePage /> },
 
       // только для гостей
       {

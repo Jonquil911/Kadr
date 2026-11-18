@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import './connection'; // связывает onlineManager TanStack Query с проверенным статусом сети
 
 export const queryClient = new QueryClient({
   defaultOptions: {

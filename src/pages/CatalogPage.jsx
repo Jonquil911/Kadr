@@ -1,6 +1,7 @@
 import { SearchX } from 'lucide-react';
 import FiltersBar from '../components/catalog/FiltersBar';
 import MediaGrid from '../components/media/MediaGrid';
+import CachedDataNotice from '../components/pwa/CachedDataNotice';
 import { EmptyState, ErrorState, MediaGridSkeleton, Spinner } from '../components/ui/Feedback';
 import Pagination from '../components/ui/Pagination';
 import { useCatalogFilters } from '../hooks/useCatalogFilters';
@@ -33,6 +34,7 @@ export default function CatalogPage({ mediaType }) {
       </header>
 
       <FiltersBar filters={filters} update={update} reset={reset} activeCount={activeCount} />
+      <CachedDataNotice cache={data?.cache} />
 
       {isPending && <MediaGridSkeleton />}
       {isError && !data && <ErrorState error={error} onRetry={refetch} />}

@@ -4,6 +4,7 @@
  * которые, в свою очередь, используют функции этого модуля.
  */
 import { TMDB_MAX_PAGES } from '../utils/media';
+import { reportNetworkFailure } from './connection';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 const CREDENTIAL = import.meta.env.VITE_TMDB_API_KEY ?? '';
@@ -45,6 +46,7 @@ async function request(path, { params, signal } = {}) {
     });
   } catch (error) {
     if (error.name === 'AbortError') throw error; // отменённый запрос — TanStack Query обработает сам
+    reportNetworkFailure();
     throw new ApiError('Не удалось связаться с TMDB. Проверьте подключение к интернету.', 0);
   }
 
@@ -56,7 +58,14 @@ async function request(path, { params, signal } = {}) {
     };
     throw new ApiError(messages[response.status] ?? `Ошибка TMDB (${response.status}).`, response.status);
   }
-  return response.json();
+  const data = await response.json();
+  // Offline flag: Service Worker помечает ответы, взятые из кэша, заголовком X-Kadr-Cache.
+  // Флаг доезжает до UI в поле cache, и страница показывает «это сохранённые данные».
+  if (response.headers.get('X-Kadr-Cache') === 'hit') {
+    reportNetworkFailure();
+    data.__cache = { fromCache: true, cachedAt: Number(response.headers.get('X-Kadr-Cached-At')) || null };
+  }
+  return data;
 }
 
 /* ---------- Нормализация: фильмы и сериалы приводятся к одному виду ---------- */
@@ -85,6 +94,7 @@ function normalizeList(data, mediaType) {
     page: data.page,
     totalPages: Math.min(data.total_pages ?? 1, TMDB_MAX_PAGES),
     totalResults: data.total_results ?? 0,
+    cache: data.__cache ?? null,
     results: (data.results ?? [])
       .filter((item) => item.media_type !== 'person')
       .map((item) => normalizeMedia(item, mediaType)),
@@ -114,6 +124,7 @@ function normalizeDetails(raw, mediaType) {
 
   return {
     ...base,
+    cache: raw.__cache ?? null,
     genres: raw.genres ?? [],
     tagline: raw.tagline ?? '',
     status: raw.status ?? '',

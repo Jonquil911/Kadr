@@ -8,6 +8,8 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    // цвет системной панели в установленном PWA и мобильном браузере
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#eef0f6' : '#151a2e');
     storeTheme(theme);
   }, [theme]);
 

@@ -1,5 +1,7 @@
 import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { getErrorMessage } from '../../utils/errors';
+import OfflineView from '../pwa/OfflineView';
 
 export function Spinner({ size = 20, label = 'Загрузка' }) {
   return <span className="spinner" style={{ width: size, height: size }} role="status" aria-label={label} />;
@@ -30,6 +32,9 @@ export function EmptyState({ icon: Icon, title, text, action }) {
 }
 
 export function ErrorState({ error, onRetry, title = 'Не удалось загрузить данные' }) {
+  const online = useOnlineStatus();
+  // офлайн и данных нет в кэше — вместо «ошибки» показываем понятный офлайн-экран
+  if (!online) return <OfflineView compact onRetry={onRetry ? () => onRetry() : undefined} />;
   return (
     <div className="state-view state-view--error" role="alert">
       <div className="state-view__icon">

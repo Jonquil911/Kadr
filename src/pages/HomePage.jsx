@@ -1,10 +1,12 @@
 import { Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MediaRow } from '../components/media/MediaGrid';
+import CachedDataNotice from '../components/pwa/CachedDataNotice';
 import { ErrorState, Spinner } from '../components/ui/Feedback';
 import { useAuth } from '../context/AuthContext';
 import { useLibrary } from '../hooks/useLibrary';
 import { useMediaCollection, useTrending } from '../hooks/useMedia';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { imageUrl } from '../utils/media';
 import { mediaTypeLabel } from '../utils/format';
 
@@ -70,18 +72,21 @@ function WatchlistShelf() {
 
 export default function HomePage() {
   const { user } = useAuth();
+  const online = useOnlineStatus();
   const trending = useTrending('all');
   const popularTv = useMediaCollection('tv', 'popular');
   const topRated = useMediaCollection('movie', 'top_rated');
   const upcoming = useMediaCollection('movie', 'upcoming');
   const featured = trending.data?.results.find((i) => i.backdropPath);
+  const cache = [trending, popularTv, topRated, upcoming].map((q) => q.data?.cache);
 
   return (
     <div className="home">
       {featured ? <Hero item={featured} /> : <div className="hero hero--placeholder" />}
       <div className="container">
+        <CachedDataNotice cache={cache} />
         {trending.isError && <ErrorState error={trending.error} onRetry={trending.refetch} />}
-        {user && <WatchlistShelf />}
+        {user && online && <WatchlistShelf />}
         {!trending.isError && (
           <Shelf title="В тренде на этой неделе" query={trending} showType />
         )}

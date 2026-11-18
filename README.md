@@ -4,7 +4,7 @@ A React app for keeping track of movies and TV shows: a TMDB catalog with filter
 
 **Live demo:** https://&lt;user&gt;.github.io/&lt;repo&gt;/
 
-**Stack:** React 19 · Vite · React Router 7 · TanStack Query 5 · Firebase Auth + Cloud Firestore · TMDB API · GitHub Pages
+**Stack:** React 19 · Vite · React Router 7 · TanStack Query 5 · Firebase Auth + Cloud Firestore · TMDB API · PWA (Service Worker, vite-plugin-pwa) · GitHub Pages
 
 > The interface language is Russian.
 
@@ -118,6 +118,60 @@ Unused cache entries are garbage-collected after 10 minutes (`gcTime`). Requests
 - **Smooth pagination.** `placeholderData: keepPreviousData` keeps the previous page on screen, dimmed, while the next one loads.
 
 Every screen handles **loading** (skeletons and spinners), **error** (a message with a Retry button) and **empty** states (guidance on what to do next).
+
+---
+
+## Progressive Web App
+
+The app is installable and works offline.
+
+### Manifest and installation
+- `public/manifest.json`: `name`, `short_name`, `start_url`, `scope`, `display: "standalone"`, `theme_color`, `background_color`, plus icons at 192×192, 512×512 and a 512×512 maskable icon (`public/icons/`).
+- The manifest is linked in `index.html` together with `theme-color` and `apple-touch-icon`. `start_url` and `scope` are relative (`./`), so the manifest works both on `localhost` and under `/<repo>/` on GitHub Pages.
+
+### Service Worker (`src/sw.js`)
+The Service Worker is written by hand. `vite-plugin-pwa` (in `injectManifest` mode) only injects the list of built files into `self.__WB_MANIFEST`.
+
+| Event | What it does |
+|---|---|
+| `install` | Pre-caches the app shell: `index.html`, hashed JS/CSS bundles, icons, `manifest.json` and `offline.html` |
+| `activate` | Deletes every `kadr-*` cache that does not belong to the current version, then calls `clients.claim()` |
+| `message` | `SKIP_WAITING` activates a waiting worker. This is sent only when the user clicks **Update** |
+| `fetch` | Routes each request to a caching strategy (see below) |
+
+**Versioning.** The shell cache is named `kadr-shell-<hash>`, where the hash is computed from the build manifest, so every deploy creates a new cache. Runtime caches carry a format version (`kadr-api-v1`, `kadr-images-v1`, …).
+
+**Updates.** `PwaUpdatePrompt` registers the worker through `virtual:pwa-register/react`. It checks for a new version hourly and whenever the tab becomes visible. When a new worker is waiting, the user sees *"A new version is available"* with an **Update** button. Clicking it sends `SKIP_WAITING`; the new worker activates, deletes the old caches and the page reloads. Users never have to clear browser storage by hand.
+
+### Runtime caching
+
+| Requests | Strategy | Cache | Limits |
+|---|---|---|---|
+| App shell (built JS/CSS/HTML, icons) | cache-first (pre-cached) | `kadr-shell-<hash>` | replaced on every deploy |
+| TMDB posters and backdrops, local images | **cache-first** | `kadr-images-v1` | 150 entries, 30 days |
+| Google Fonts files | **cache-first** | `kadr-fonts-v1` | 30 entries, 1 year |
+| Google Fonts stylesheet | stale-while-revalidate | `kadr-fonts-v1` | same |
+| TMDB API lists and details (`api.themoviedb.org/3/*`) | **network-first**, 6 s timeout, cache fallback on network error or 5xx | `kadr-api-v1` | 120 entries, 3 days |
+| Page navigations | network-first; offline: app shell for visited pages, otherwise `offline.html` | `kadr-pages-v1` (visit markers only) | 80 entries, 30 days |
+
+- **Offline flag.** A response served from the API cache gets the `X-Kadr-Cache: hit` and `X-Kadr-Cached-At` headers. `services/tmdb.js` turns them into a `cache` field on the data, and `CachedDataNotice` shows *"Showing saved data from …"* on the home, catalog and details pages. Cached data counts as stale immediately, so it is refetched as soon as the connection returns.
+- **No private data in shared caches.** Only public TMDB endpoints, images and fonts are cached. The `api_key` is removed from cache keys. TMDB `authentication`/`account`/`session` endpoints are excluded. Firebase Auth (tokens) and Firestore (personal data) are never intercepted by the Service Worker. Firestore uses its default in-memory cache, so nothing personal is persisted.
+- **No private data offline.** When the connection drops, the personal dashboard (`/profile/*`) shows *"Your diary is available only online"*, the library actions on details pages are hidden, and all personal queries (`['user', …]`) are reset in memory. They reload when the connection returns.
+- **Failure handling.** Failed requests never crash the app. A network error becomes a readable message, and offline it shows the offline view with **Retry connection**.
+
+### Offline page and connectivity indicator
+- `/offline` is a dedicated route in the app. `public/offline.html` is a self-contained static page in the pre-cache. The Service Worker serves it when navigation fails and the page has never been visited. Both pages include a **Retry connection** button.
+- The navbar shows an **Online / Offline** indicator, with a banner under it while offline. The status does not rely only on `navigator.onLine`. It is confirmed by a real `HEAD` request (`services/connection.js`) at startup, on the `online` event and whenever a request fails, and it is shared with TanStack Query's `onlineManager`.
+- Visited pages and cached public data stay available offline. TanStack Query refetches stale data automatically once the connection returns.
+
+### Mobile
+The layout works from 320 px wide in both portrait and landscape: a burger menu, single-column forms and cards, and no horizontal scrolling. On touch screens, controls have targets of at least 44×44 px. Form fields use 16 px text so iOS does not zoom in.
+
+### How to test
+```bash
+npm run build && npm run preview   # the Service Worker is disabled in npm run dev
+```
+DevTools → **Application**: *Manifest* (installability), *Service workers* (lifecycle, *Update on reload*), *Cache storage*. Use **Network → Offline** to simulate a lost connection. **Lighthouse** shows the PWA audit.
 
 ---
 

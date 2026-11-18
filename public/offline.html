@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru" data-scope="__KADR_SCOPE__">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#151a2e" />
+    <title>Нет подключения — Кадр</title>
+    <!-- Всё встроено в файл: внешние шрифты и стили офлайн недоступны -->
+    <style>
+      :root {
+        --bg: #151a2e;
+        --surface: #1d2342;
+        --line: #2d3459;
+        --text: #ece8df;
+        --muted: #9aa0bc;
+        --accent: #f4c95d;
+        --accent-ink: #2a1f00;
+        --danger: #f0686b;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #eef0f6;
+          --surface: #ffffff;
+          --line: #d4d8e5;
+          --text: #191e35;
+          --muted: #5b6182;
+          --accent: #efbd45;
+          --danger: #c93a3e;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 440px;
+        padding: 32px 24px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--surface);
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+      }
+      .logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.25rem; }
+      .icon {
+        width: 76px; height: 76px; margin: 24px auto 16px;
+        display: grid; place-items: center;
+        border-radius: 50%;
+        background: rgba(244, 201, 93, 0.14);
+        color: var(--accent);
+      }
+      h1 { margin: 0 0 8px; font-size: clamp(1.35rem, 5vw, 1.6rem); line-height: 1.25; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        min-height: 48px; padding: 0 22px;
+        border-radius: 999px; border: 1px solid var(--line);
+        font: inherit; font-weight: 600; text-decoration: none;
+        color: var(--text); background: transparent; cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btn--primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+      .btn:disabled { opacity: 0.6; cursor: progress; }
+      .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      .status {
+        display: inline-flex; align-items: center; gap: 8px;
+        margin-top: 20px; font-size: 0.9rem; color: var(--muted);
+      }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
+      .status.is-online .dot { background: #6fd3a5; }
+      .message { min-height: 1.5em; margin-top: 12px; font-size: 0.92rem; }
+      @media (prefers-reduced-motion: no-preference) {
+        .btn:disabled svg { animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="main">
+      <div class="logo">
+        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+          <rect x="3" y="7" width="26" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="3" />
+          <circle cx="16" cy="16" r="4.5" fill="#f4c95d" />
+        </svg>
+        <span>Кадр</span>
+      </div>
+
+      <div class="icon" aria-hidden="true">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h.01" /><path d="M8.5 16.43a5 5 0 0 1 7 0" /><path d="M5 12.86a10 10 0 0 1 5.17-2.69" />
+          <path d="M19 12.86a10 10 0 0 0-2-1.43" /><path d="M2 8.82a15 15 0 0 1 4.18-2.65" />
+          <path d="M22 8.82a15 15 0 0 0-11.29-3.76" /><path d="m2 2 20 20" />
+        </svg>
+      </div>
+
+      <h1>Нет подключения к интернету</h1>
+      <p>Эта страница ещё не сохранена для просмотра офлайн. Проверьте Wi-Fi или мобильный интернет и попробуйте снова.</p>
+      <p>Фильмы и страницы, которые вы уже открывали, доступны и без сети.</p>
+
+      <div class="actions">
+        <button type="button" class="btn btn--primary" id="retry">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
+          </svg>
+          <span>Повторить подключение</span>
+        </button>
+        <a class="btn" id="home" href="./">На главную</a>
+      </div>
+
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span><span id="status-text">Офлайн</span>
+      </div>
+      <p class="message" id="message" aria-live="polite"></p>
+    </main>
+
+    <script>
+      (function () {
+        // Service Worker подставляет scope приложения вместо плейсхолдера
+        var scope = document.documentElement.getAttribute('data-scope') || './';
+        if (scope.indexOf('__') === 0) scope = './';
+        document.getElementById('home').href = scope;
+
+        var retry = document.getElementById('retry');
+        var message = document.getElementById('message');
+        var status = document.getElementById('status');
+        var statusText = document.getElementById('status-text');
+
+        function render() {
+          var online = navigator.onLine;
+          status.classList.toggle('is-online', online);
+          statusText.textContent = online ? 'Сеть появилась — можно повторить' : 'Офлайн';
+        }
+
+        // ?ping Service Worker не перехватывает — запрос идёт в сеть
+        function checkConnection() {
+          var controller = 'AbortController' in window ? new AbortController() : null;
+          var timer = setTimeout(function () { controller && controller.abort(); }, 5000);
+          return fetch(scope + 'manifest.json?ping=' + Date.now(), {
+            method: 'HEAD',
+            cache: 'no-store',
+            signal: controller ? controller.signal : undefined,
+          })
+            .then(function (r) { return r.ok; })
+            .catch(function () { return false; })
+            .finally(function () { clearTimeout(timer); });
+        }
+
+        function tryAgain() {
+          retry.disabled = true;
+          message.textContent = 'Проверяем подключение…';
+          checkConnection().then(function (ok) {
+            if (ok) {
+              message.textContent = 'Подключение восстановлено, загружаем страницу…';
+              location.reload();
+            } else {
+              retry.disabled = false;
+              message.textContent = 'Связь пока не появилась. Попробуйте ещё раз чуть позже.';
+            }
+          });
+        }
+
+        retry.addEventListener('click', tryAgain);
+        window.addEventListener('online', function () { render(); tryAgain(); });
+        window.addEventListener('offline', render);
+        render();
+      })();
+    </script>
+  </body>
+</html>

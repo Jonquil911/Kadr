@@ -4,10 +4,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import LibraryActions from '../components/media/LibraryActions';
 import { Poster } from '../components/media/MediaCard';
 import { MediaRow } from '../components/media/MediaGrid';
+import CachedDataNotice from '../components/pwa/CachedDataNotice';
 import { ErrorState, FullPageLoader } from '../components/ui/Feedback';
 import Modal from '../components/ui/Modal';
 import { useTrackView } from '../hooks/useHistory';
 import { useMediaDetails } from '../hooks/useMedia';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { imageUrl } from '../utils/media';
 import { formatDate, formatRuntime, pluralize } from '../utils/format';
 import NotFoundPage from './NotFoundPage';
@@ -17,6 +19,7 @@ export default function DetailsPage({ mediaType }) {
   const navigate = useNavigate();
   const { data: media, isPending, isError, error, refetch } = useMediaDetails(mediaType, id);
   const [trailerOpen, setTrailerOpen] = useState(false);
+  const online = useOnlineStatus();
   useTrackView(media);
 
   if (isPending) return <FullPageLoader />;
@@ -51,6 +54,7 @@ export default function DetailsPage({ mediaType }) {
         <button type="button" className="btn btn--ghost btn--sm details__back" onClick={() => navigate(-1)}>
           <ArrowLeft size={16} /> Назад
         </button>
+        <CachedDataNotice cache={media.cache} />
 
         <div className="details__layout">
           <div className="details__poster">
@@ -77,7 +81,13 @@ export default function DetailsPage({ mediaType }) {
               ))}
             </ul>
 
-            <LibraryActions media={media} />
+            {online ? (
+              <LibraryActions media={media} />
+            ) : (
+              <p className="diary-panel diary-panel--offline">
+                Отметки, оценки и подборки доступны, когда есть подключение к интернету.
+              </p>
+            )}
 
             {media.overview && (
               <section className="details__section">
