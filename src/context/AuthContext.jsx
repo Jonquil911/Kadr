@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useDispatch } from 'react-redux';
 import {
   completeRedirectSignIn,
   reloadCurrentUser,
@@ -10,13 +10,13 @@ import {
   signUpWithEmail,
   subscribeToAuthChanges,
 } from '../services/authService';
-import { queryKeys } from '../services/queryKeys';
+import { clearUserData, invalidateUserData } from '../store/sessionActions';
 import { getErrorMessage } from '../utils/errors';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const queryClient = useQueryClient();
+  const dispatch = useDispatch();
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true); // ждём первый ответ onAuthStateChanged
   const [pending, setPending] = useState(false); // идёт вход/регистрация/выход
@@ -28,8 +28,8 @@ export function AuthProvider({ children }) {
     // Firebase сам восстанавливает сессию из IndexedDB после перезагрузки страницы
     const unsubscribe = subscribeToAuthChanges((firebaseUser) => {
       if (previousUid.current && previousUid.current !== firebaseUser?.uid) {
-        // сменился пользователь или выход — личные данные прошлого пользователя не должны остаться в кэше
-        queryClient.removeQueries({ queryKey: queryKeys.user.all });
+        // сменился пользователь или выход — личные данные прошлого пользователя не должны остаться в хранилище
+        dispatch(clearUserData());
       }
       previousUid.current = firebaseUser?.uid ?? null;
       setUser(firebaseUser);
@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
     });
     completeRedirectSignIn().catch((e) => setError(getErrorMessage(e)));
     return unsubscribe;
-  }, [queryClient]);
+  }, [dispatch]);
 
   /** Обёртка для действий: единый индикатор загрузки и понятные тексты ошибок. */
   const run = useCallback(async (action) => {
@@ -61,10 +61,10 @@ export function AuthProvider({ children }) {
         // onAuthStateChanged сработал раньше, чем updateProfile задал имя, — обновляем вручную
         setUser(created);
         setVersion((v) => v + 1);
-        queryClient.invalidateQueries({ queryKey: queryKeys.user.root(created.uid) });
+        dispatch(invalidateUserData());
         return created;
       }),
-    [run, queryClient],
+    [run, dispatch],
   );
   const login = useCallback((data) => run(() => signInWithEmail(data)), [run]);
   const loginWithGoogle = useCallback((options) => run(() => signInWithGoogle(options)), [run]);
@@ -73,9 +73,9 @@ export function AuthProvider({ children }) {
     () =>
       run(async () => {
         await signOutUser();
-        queryClient.removeQueries({ queryKey: queryKeys.user.all });
+        dispatch(clearUserData());
       }),
-    [run, queryClient],
+    [run, dispatch],
   );
 
   const refreshUser = useCallback(async () => {

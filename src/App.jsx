@@ -1,5 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { Provider } from 'react-redux';
 import { RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import SetupScreen from './components/layout/SetupScreen';
@@ -8,7 +7,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { isFirebaseConfigured } from './firebase';
 import { router } from './router';
-import { queryClient } from './services/queryClient';
+import { store } from './store';
 
 function ThemedToaster() {
   const { theme } = useTheme();
@@ -18,18 +17,16 @@ function ThemedToaster() {
 export default function App() {
   if (!isFirebaseConfigured) return <SetupScreen />;
 
-  // Service Worker регистрируется только в production-сборке (npm run build / деплой)
-
   return (
-    <QueryClientProvider client={queryClient}>
+    <Provider store={store}>
       <ThemeProvider>
         <AuthProvider>
           <RouterProvider router={router} />
           <ThemedToaster />
+          {/* Service Worker регистрируется только в production-сборке */}
           {import.meta.env.PROD && <PwaUpdatePrompt />}
         </AuthProvider>
       </ThemeProvider>
-      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />}
-    </QueryClientProvider>
+    </Provider>
   );
 }

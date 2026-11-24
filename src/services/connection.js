@@ -1,6 +1,5 @@
 // navigator.onLine бывает true и без интернета (Wi-Fi без доступа), поэтому статус
 // подтверждается реальным запросом к серверу.
-import { onlineManager } from '@tanstack/react-query';
 
 const PING_URL = `${import.meta.env.BASE_URL}manifest.json`;
 const RECHECK_MS = 5_000;
@@ -66,9 +65,3 @@ export function subscribeToOnlineStatus(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-
-// TanStack Query получает тот же статус: пауза запросов офлайн и перезапрос при возврате сети
-onlineManager.setEventListener((setQueryOnline) => {
-  setQueryOnline(online);
-  return subscribeToOnlineStatus(() => setQueryOnline(online));
-});

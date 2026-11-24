@@ -1,55 +1,57 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { CACHE_TIME, queryKeys } from '../services/queryKeys';
 import {
-  createCollection,
-  deleteCollection,
-  getCollections,
-  toggleCollectionItem,
-  updateCollection,
-} from '../services/userDataService';
+  createCollectionThunk,
+  deleteCollectionThunk,
+  fetchCollections,
+  selectCollectionsState,
+  toggleCollectionItemThunk,
+  updateCollectionThunk,
+} from '../store/slices/collectionsSlice';
 import { getErrorMessage } from '../utils/errors';
+import { useAsyncAction, useCachedQuery } from './useStoreQuery';
 
 export function useCollections() {
   const { user } = useAuth();
   const uid = user?.uid;
-  return useQuery({
-    queryKey: queryKeys.user.collections(uid),
-    queryFn: () => getCollections(uid),
+  const state = useSelector(selectCollectionsState);
+  return useCachedQuery({
+    key: uid,
+    entry: state.uid === uid ? state : undefined,
     enabled: Boolean(uid),
-    staleTime: CACHE_TIME.user,
-    refetchOnWindowFocus: true,
+    requiresOnline: true,
+    request: (options) => fetchCollections({ uid, ...options }),
   });
 }
 
-/** Все мутации подборок после завершения инвалидируют ключ ['user', uid, 'collections']. */
-function useCollectionMutation(mutationFn, successMessage) {
+/** Мутация подборки: thunk сам перечитывает список после выполнения. */
+function useCollectionMutation(makeAction, successMessage) {
   const { user } = useAuth();
-  const uid = user?.uid;
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (vars) => mutationFn(uid, vars),
+  const dispatch = useDispatch();
+  return useAsyncAction((vars) => dispatch(makeAction(user.uid, vars)).unwrap(), {
     onSuccess: (result, vars) => {
       const message = typeof successMessage === 'function' ? successMessage(result, vars) : successMessage;
       if (message) toast.success(message);
     },
     onError: (error) => toast.error(getErrorMessage(error)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.user.collections(uid) }),
   });
 }
 
 export const useCreateCollection = () =>
-  useCollectionMutation((uid, data) => createCollection(uid, data), (_, vars) => `Подборка «${vars.name}» создана`);
+  useCollectionMutation(
+    (uid, data) => createCollectionThunk({ uid, data }),
+    (_, vars) => `Подборка «${vars.name}» создана`,
+  );
 
 export const useUpdateCollection = () =>
-  useCollectionMutation((uid, { id, ...patch }) => updateCollection(uid, id, patch), 'Подборка обновлена');
+  useCollectionMutation((uid, { id, ...patch }) => updateCollectionThunk({ uid, id, patch }), 'Подборка обновлена');
 
 export const useDeleteCollection = () =>
-  useCollectionMutation((uid, { id }) => deleteCollection(uid, id), 'Подборка удалена');
+  useCollectionMutation((uid, { id }) => deleteCollectionThunk({ uid, id }), 'Подборка удалена');
 
 export const useToggleCollectionItem = () =>
   useCollectionMutation(
-    (uid, { collectionId, media }) => toggleCollectionItem(uid, collectionId, media),
+    (uid, { collectionId, media }) => toggleCollectionItemThunk({ uid, collectionId, media }),
     (added, vars) => (added ? `Добавлено в «${vars.collectionName}»` : `Убрано из «${vars.collectionName}»`),
   );

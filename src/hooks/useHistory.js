@@ -1,19 +1,27 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { CACHE_TIME, queryKeys } from '../services/queryKeys';
-import { addHistoryEntry, clearHistory, getHistory, removeHistoryEntry } from '../services/userDataService';
+import {
+  clearHistoryThunk,
+  fetchHistory,
+  removeHistoryItem,
+  selectHistoryState,
+  trackView,
+} from '../store/slices/historySlice';
 import { getErrorMessage } from '../utils/errors';
+import { useAsyncAction, useCachedQuery } from './useStoreQuery';
 
 export function useHistory() {
   const { user } = useAuth();
   const uid = user?.uid;
-  return useQuery({
-    queryKey: queryKeys.user.history(uid),
-    queryFn: () => getHistory(uid),
+  const state = useSelector(selectHistoryState);
+  return useCachedQuery({
+    key: uid,
+    entry: state.uid === uid ? state : undefined,
     enabled: Boolean(uid),
-    staleTime: CACHE_TIME.user,
+    requiresOnline: true,
+    request: (options) => fetchHistory({ uid, ...options }),
   });
 }
 
@@ -21,15 +29,13 @@ export function useHistory() {
 export function useTrackView(media) {
   const { user } = useAuth();
   const uid = user?.uid;
-  const queryClient = useQueryClient();
+  const dispatch = useDispatch();
   const id = media?.id;
   const type = media?.mediaType;
 
   useEffect(() => {
     if (!uid || !media) return;
-    addHistoryEntry(uid, media)
-      .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.user.history(uid) }))
-      .catch(() => {}); // история — второстепенная функция, ошибку не показываем
+    dispatch(trackView({ uid, media })); // история — второстепенная функция, ошибку не показываем
     // запись нужна один раз на открытие конкретного фильма
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid, id, type]);
@@ -37,27 +43,13 @@ export function useTrackView(media) {
 
 export function useHistoryActions() {
   const { user } = useAuth();
-  const uid = user?.uid;
-  const queryClient = useQueryClient();
-  const key = queryKeys.user.history(uid);
-  const options = {
-    onError: (error) => toast.error(getErrorMessage(error)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
-  };
+  const dispatch = useDispatch();
+  const onError = (error) => toast.error(getErrorMessage(error));
 
-  const remove = useMutation({
-    mutationFn: (entryKey) => removeHistoryEntry(uid, entryKey),
-    onMutate: async (entryKey) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      queryClient.setQueryData(key, (old = []) => old.filter((e) => e.id !== entryKey));
-    },
-    ...options,
-  });
-
-  const clear = useMutation({
-    mutationFn: () => clearHistory(uid),
+  const remove = useAsyncAction((key) => dispatch(removeHistoryItem({ uid: user.uid, key })).unwrap(), { onError });
+  const clear = useAsyncAction(() => dispatch(clearHistoryThunk({ uid: user.uid })).unwrap(), {
     onSuccess: () => toast.success('История очищена'),
-    ...options,
+    onError,
   });
 
   return { remove, clear };

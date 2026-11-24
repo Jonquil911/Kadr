@@ -1,98 +1,59 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { CACHE_TIME, queryKeys } from '../services/queryKeys';
-import { getLibrary, removeLibraryItem, saveLibraryItem } from '../services/userDataService';
-import { mediaKey } from '../utils/media';
+import {
+  fetchLibrary,
+  saveLibraryEntry,
+  selectLibraryEntry,
+  selectLibraryIndex,
+  selectLibraryState,
+} from '../store/slices/librarySlice';
 import { getErrorMessage } from '../utils/errors';
+import { mediaKey } from '../utils/media';
+import { useAsyncAction, useCachedQuery } from './useStoreQuery';
 
-/** Вся библиотека пользователя одним запросом (кэшируется и переиспользуется всеми экранами кабинета). */
-export function useLibrary(options = {}) {
+/** Вся библиотека пользователя одним запросом — общий источник для всех экранов. */
+export function useLibrary() {
   const { user } = useAuth();
   const uid = user?.uid;
-  return useQuery({
-    queryKey: queryKeys.user.library(uid),
-    queryFn: () => getLibrary(uid),
+  const state = useSelector(selectLibraryState);
+  return useCachedQuery({
+    key: uid,
+    entry: state.uid === uid ? state : undefined,
     enabled: Boolean(uid),
-    staleTime: CACHE_TIME.user,
-    refetchOnWindowFocus: true, // данные могли измениться на другом устройстве
-    ...options,
+    requiresOnline: true, // офлайн личные данные не загружаются
+    request: (options) => fetchLibrary({ uid, ...options }),
   });
 }
 
-const isEmptyEntry = (entry) => !entry.status && entry.rating == null && !entry.favorite && !entry.review;
+/** Map «ключ фильма → запись библиотеки» для отметок на карточках. */
+export function useLibraryIndex() {
+  useLibrary();
+  return useSelector(selectLibraryIndex);
+}
 
-/**
- * Мутации библиотеки с оптимистичным обновлением:
- * 1) отменяем текущие запросы библиотеки, чтобы их устаревший ответ не перезаписал изменение;
- * 2) сразу меняем кэш — интерфейс реагирует мгновенно;
- * 3) при ошибке откатываем снимок; в любом случае инвалидируем ключ и перечитываем данные.
- */
-export function useLibraryMutation() {
+/** Оптимистичная мутация библиотеки (см. librarySlice). */
+function useSaveLibraryEntry() {
   const { user } = useAuth();
-  const uid = user?.uid;
-  const queryClient = useQueryClient();
-  const key = queryKeys.user.library(uid);
-
-  return useMutation({
-    mutationFn: async ({ media, patch, current }) => {
-      const next = { ...current, ...patch };
-      if (isEmptyEntry(next)) {
-        if (current) await removeLibraryItem(uid, mediaKey(media.mediaType, media.id));
-        return;
-      }
-      await saveLibraryItem(uid, media, patch);
-    },
-    onMutate: async ({ media, patch, current }) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData(key);
-      const id = mediaKey(media.mediaType, media.id);
-      const now = Date.now();
-      queryClient.setQueryData(key, (old = []) => {
-        const base = current ?? {
-          id,
-          mediaId: media.id,
-          mediaType: media.mediaType,
-          title: media.title,
-          posterPath: media.posterPath,
-          year: media.year,
-          genres: media.genres?.map((g) => g.name ?? g) ?? [],
-          runtime: media.runtime ?? 0,
-          status: null,
-          rating: null,
-          review: '',
-          favorite: false,
-          addedAt: now,
-        };
-        const next = { ...base, ...patch, updatedAt: now };
-        if (patch.status === 'watched' && !base.watchedAt) next.watchedAt = now;
-        const rest = old.filter((item) => item.id !== id);
-        return isEmptyEntry(next) ? rest : [next, ...rest];
-      });
-      return { previous };
-    },
-    onError: (error, _vars, context) => {
-      queryClient.setQueryData(key, context?.previous);
-      toast.error(getErrorMessage(error));
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
-  });
+  const dispatch = useDispatch();
+  return useAsyncAction(
+    ({ media, patch, current }) =>
+      dispatch(saveLibraryEntry({ uid: user.uid, media, patch, current, now: Date.now() })).unwrap(),
+    { onError: (error) => toast.error(getErrorMessage(error)) },
+  );
 }
 
 /** Удобный набор действий для одного фильма. */
 export function useLibraryEntry(media) {
-  const { data: library = [], isLoading } = useLibrary();
-  const mutation = useLibraryMutation();
+  const { isLoading } = useLibrary();
   const id = media ? mediaKey(media.mediaType, media.id) : null;
-  const entry = useMemo(() => library.find((item) => item.id === id) ?? null, [library, id]);
+  const entry = useSelector((state) => selectLibraryEntry(state, id));
+  const mutation = useSaveLibraryEntry();
 
   const apply = useCallback(
     (patch, message) =>
-      mutation.mutate(
-        { media, patch, current: entry },
-        { onSuccess: () => message && toast.success(message) },
-      ),
+      mutation.mutate({ media, patch, current: entry }, { onSuccess: () => message && toast.success(message) }),
     [mutation, media, entry],
   );
 
@@ -123,7 +84,7 @@ export function useLibraryEntry(media) {
 
 /** Действия над записью из кабинета, когда полных данных TMDB нет — хватает сохранённых полей. */
 export function useLibraryItemActions() {
-  const mutation = useLibraryMutation();
+  const mutation = useSaveLibraryEntry();
   return useCallback(
     (entry, patch, message) => {
       const media = {

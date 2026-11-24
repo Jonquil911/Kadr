@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { MediaRow } from '../components/media/MediaGrid';
 import CachedDataNotice from '../components/pwa/CachedDataNotice';
@@ -7,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLibrary } from '../hooks/useLibrary';
 import { useMediaCollection, useTrending } from '../hooks/useMedia';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { selectWatchlist } from '../store/slices/librarySlice';
 import { imageUrl } from '../utils/media';
 import { mediaTypeLabel } from '../utils/format';
 
@@ -54,9 +56,9 @@ function Shelf({ title, query, link, showType }) {
 }
 
 function WatchlistShelf() {
-  const { data = [] } = useLibrary();
-  const items = data
-    .filter((i) => i.status === 'watchlist')
+  useLibrary();
+  const watchlist = useSelector(selectWatchlist); // мемоизированный селектор
+  const items = watchlist
     .slice(0, 16)
     .map((i) => ({ ...i, id: i.mediaId, rating: i.tmdbRating }));
   if (!items.length) return null;

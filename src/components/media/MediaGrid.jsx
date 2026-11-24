@@ -1,13 +1,9 @@
-import { useMemo } from 'react';
-import { useLibrary } from '../../hooks/useLibrary';
+import { useLibraryIndex } from '../../hooks/useLibrary';
 import { mediaKey } from '../../utils/media';
 import MediaCard from './MediaCard';
 
-/** Карта «ключ → запись библиотеки», чтобы на карточках отмечать уже добавленные фильмы. */
-export function useLibraryIndex() {
-  const { data } = useLibrary();
-  return useMemo(() => new Map((data ?? []).map((entry) => [entry.id, entry])), [data]);
-}
+// Map «ключ → запись библиотеки» — мемоизированный селектор selectLibraryIndex
+export { useLibraryIndex };
 
 export default function MediaGrid({ items, showType, dimmed }) {
   const index = useLibraryIndex();

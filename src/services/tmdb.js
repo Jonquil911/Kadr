@@ -45,7 +45,7 @@ async function request(path, { params, signal } = {}) {
       headers: isBearerToken ? { Authorization: `Bearer ${CREDENTIAL}`, accept: 'application/json' } : undefined,
     });
   } catch (error) {
-    if (error.name === 'AbortError') throw error; // отменённый запрос — TanStack Query обработает сам
+    if (error.name === 'AbortError') throw error; // отменённый запрос (thunk.abort) — это не ошибка, Redux пометит его как aborted
     reportNetworkFailure();
     throw new ApiError('Не удалось связаться с TMDB. Проверьте подключение к интернету.', 0);
   }

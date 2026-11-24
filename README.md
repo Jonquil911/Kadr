@@ -4,7 +4,7 @@ A React app for keeping track of movies and TV shows: a TMDB catalog with filter
 
 **Live demo:** https://&lt;user&gt;.github.io/&lt;repo&gt;/
 
-**Stack:** React 19 · Vite · React Router 7 · TanStack Query 5 · Firebase Auth + Cloud Firestore · TMDB API · PWA (Service Worker, vite-plugin-pwa) · GitHub Pages
+**Stack:** React 19 · Vite · React Router 7 · Redux Toolkit 2 + React Redux · Firebase Auth + Cloud Firestore · TMDB API · PWA (Service Worker, vite-plugin-pwa) · GitHub Pages
 
 > The interface language is Russian.
 
@@ -50,19 +50,23 @@ src/
 │   ├── authService.js        # Firebase Auth (sign-up, sign-in, Google, logout, onAuthStateChanged, …)
 │   ├── userDataService.js    # Firestore: profile, library, collections, history
 │   ├── preferences.js        # the only module that touches localStorage (theme)
-│   ├── queryClient.js        # TanStack Query defaults
-│   └── queryKeys.js          # query key factory and cache lifetimes
+│   └── connection.js         # verified online/offline status
+├── store/                    # Redux Toolkit
+│   ├── index.js              # configureStore + reconnect / tab-focus listeners
+│   ├── requestState.js       # shared entry shape, TTLs, condition, retries, pending/fulfilled/rejected helpers
+│   ├── sessionActions.js     # cross-slice actions: clearUserData, invalidateUserData, revalidateAfterReconnect
+│   └── slices/               # catalog, details, library, collections, history, profile
 ├── context/
 │   ├── AuthContext.jsx       # AuthProvider + useAuth
 │   └── ThemeContext.jsx
-├── hooks/                    # useMediaList, useMediaDetails, useLibrary, useCollections, useHistory, useAccount, useStats, …
+├── hooks/                    # useSelector/useDispatch wrappers: useMediaList, useMediaDetails, useLibrary, useCollections, …
 ├── utils/                    # pure helpers (formatting, validation, error messages, image URLs)
 ├── components/               # UI only
 └── pages/                    # route pages and the dashboard
 ```
 
 **Rules followed:**
-- UI components never call `fetch`, Firestore or `localStorage`. They only use hooks, and the hooks call services.
+- UI components never call `fetch`, Firestore or `localStorage`. They only use hooks. Hooks read the store with `useSelector` and start thunks with `useDispatch`; thunks call services.
 - `AuthContext` tracks the user through `onAuthStateChanged`. It is wrapped in `authService.subscribeToAuthChanges`. The context exposes `user`, `initializing` (loading state), `pending`, `error`, plus `signup`, `login`, `loginWithGoogle`, `logout` and `resetPassword`.
 - Routes are guarded by `ProtectedRoute` (for `/profile/*`) and `GuestRoute` (for `/login` and `/signup`).
 
@@ -79,45 +83,93 @@ users/{uid}/history/{key}     recently opened titles
 
 ---
 
-## Caching strategy
+## State management (Redux Toolkit)
 
-Server data is cached with **TanStack Query**. Query keys are built by a factory in `src/services/queryKeys.js` and form a hierarchy. This makes it possible to invalidate a single entry or a whole branch of the cache.
+All server data lives in a single Redux store (`src/store/index.js`, `configureStore` + `<Provider>` in `App.jsx`). What stays outside Redux, on purpose:
+- **Authentication** stays in `AuthContext` (`onAuthStateChanged`, login/logout state). Slices only react to it: on logout or user switch `AuthContext` dispatches `clearUserData()`.
+- **Temporary UI state** (open modals, form fields, whether a "Save" button is busy) stays local in components, via `useState` and the small `useAsyncAction` hook.
+- **Filters, sorting and pagination** stay in the URL (`useCatalogFilters`), and the search box is debounced (450 ms). The filters object is part of the cache key.
 
-| Data | Query key | `staleTime` | Revalidation |
-|---|---|---|---|
-| Catalog list | `['tmdb','list',{mediaType,query,genre,year,minRating,sort,page}]` | 5 min | refetched on next use after 5 min |
-| Trending / curated lists | `['tmdb','trending',type]`, `['tmdb','collection',type,list]` | 5 min | same |
-| Title details | `['tmdb','details',type,id]` | 30 min | prefetched on card hover/focus |
-| Genres | `['tmdb','genres',type]` | 24 h | — |
-| Library | `['user',uid,'library']` | 1 min | on window focus and after every mutation |
-| Collections | `['user',uid,'collections']` | 1 min | on window focus and after every mutation |
-| History | `['user',uid,'history']` | 1 min | after every write or delete |
-| Profile | `['user',uid,'profile']` | 1 min | after settings are saved |
+### Slices
 
-Unused cache entries are garbage-collected after 10 minutes (`gcTime`). Requests that fail with 401, 403 or 404 are not retried. Other failures are retried up to twice.
+| Slice | Holds | Source |
+|---|---|---|
+| `catalog` | Catalog lists by filters, trending, curated home lists, genres. One entry per parameter set | TMDB |
+| `details` | Title details, one entry per `mediaType:id` | TMDB |
+| `library` | The user's library: status, rating, review, favorite | Firestore |
+| `collections` | User collections | Firestore |
+| `history` | Recently opened titles | Firestore |
+| `profile` | Profile document: yearly goal, avatar color, bio | Firestore |
 
-### When the cache is invalidated
+Every loadable resource is stored as an **entry** (`store/requestState.js`):
 
-- **Library:** after every create/update/delete. This covers adding to the watchlist, marking as watched, favoriting, rating, writing or deleting a review, and removing a title. Each mutation:
-  1. cancels in-flight library queries;
-  2. updates the cache optimistically, so the UI reacts instantly;
-  3. rolls back to a snapshot if the request fails;
-  4. calls `invalidateQueries(['user', uid, 'library'])` in `onSettled`.
-- **Collections:** after creating, editing or deleting a collection, and after adding a title to it or removing one.
-- **History:** after a details page is opened, after a single entry is removed, and after the history is cleared.
-- **Profile:** after profile or settings changes.
-- **Logout or user switch:** `removeQueries(['user'])` wipes all personal data from the cache, so the next user never sees it.
-- **TMDB data:** read-only, so it only refreshes after its `staleTime` expires.
+```js
+{ data, status: 'idle' | 'loading' | 'succeeded' | 'failed', error, fetchedAt, requestId, invalidated }
+```
 
-### Preventing stale responses from overwriting newer ones
+Derived data (statistics, the watchlist, the "is this title in my library" index) is **never stored**. It is computed by selectors, so there is no duplicated state.
 
-- **Separate keys.** Every combination of filters has its own query key, so a late response for old filters is stored under its own key and never replaces the current result.
-- **Cancellation.** The `AbortSignal` provided by TanStack Query is passed to `fetch`. When filters change or the user leaves the page, the outdated request is cancelled.
-- **Debounced search.** A search request is sent only 450 ms after the user stops typing.
-- **Safe optimistic updates.** Optimistic updates call `cancelQueries` first, so an in-flight refetch with old data cannot overwrite the change.
-- **Smooth pagination.** `placeholderData: keepPreviousData` keeps the previous page on screen, dimmed, while the next one loads.
+### Async thunks (`createAsyncThunk`)
 
-Every screen handles **loading** (skeletons and spinners), **error** (a message with a Retry button) and **empty** states (guidance on what to do next).
+| Thunk | Kind | What it does |
+|---|---|---|
+| `fetchCatalogList` | list | Catalog page by filters (`catalogSlice`) |
+| `fetchTrendingList`, `fetchCollectionShelf`, `fetchGenreList` | list | Home shelves and the genre list |
+| `fetchDetails` | details | Title page; also used to prefetch on card hover |
+| `fetchLibrary`, `fetchCollections`, `fetchHistory`, `fetchUserProfile` | list | Personal data from Firestore |
+| `saveLibraryEntry` | mutation | Create / update / delete a library entry (rating, status, review, favorite) — **optimistic** |
+| `createCollectionThunk`, `updateCollectionThunk`, `deleteCollectionThunk`, `toggleCollectionItemThunk` | mutation | Collection CRUD (delete is optimistic) |
+| `removeHistoryItem`, `clearHistoryThunk`, `trackView` | mutation | History |
+| `updateProfileDoc` | mutation | Profile / preferences (optimistic for preferences) |
+
+Each slice handles `pending`, `fulfilled` and `rejected` in `extraReducers`:
+- **pending** → `status: 'loading'`, the request id is remembered;
+- **fulfilled** → data saved with `fetchedAt`, but **only if the response belongs to the latest request** (otherwise ignored);
+- **rejected** → `status: 'failed'` with a serializable error (`name`, `message`, `code`, `status`). A cancelled request (`meta.aborted`) is not treated as an error.
+
+### Avoiding unnecessary requests
+
+Every fetch thunk has a `condition` (`shouldFetch` in `requestState.js`). The thunk does not run at all when:
+- the same request is already in progress (several components asking for the library at once send **one** request);
+- the data is still fresh (TTL: catalog 5 min, details 30 min, genres 24 h, personal data 1 min);
+- it is personal data and the app is offline.
+
+`force: true` (the Retry button, refreshing after mutations) bypasses the TTL check. The `catalog` and `details` slices keep at most 80 / 60 entries and drop the oldest ones.
+
+### Loading, errors, empty results, retries
+
+- The hooks (`hooks/useStoreQuery.js`) turn an entry into `data`, `isPending`, `isFetching`, `isError`, `error`, `refetch` for the pages. Pages show skeletons/spinners, an error with a **Retry** button, or an empty state.
+- Temporary failures are **retried automatically** up to twice (`withRetry`). 401, 403, 404, missing key/network and Firestore permission errors are not retried.
+- While the next catalog page loads, the previous one stays on screen, dimmed.
+
+### Stale requests
+
+- **Separate entries per key.** A late response for old filters is stored under its own key and never replaces the current list.
+- **Cancellation.** The thunk's `AbortSignal` is passed to `fetch`. When filters or the title change, the previous request is aborted (`promise.abort()` in `useCachedQuery`).
+- **Latest request wins.** `fulfilled` is ignored if `meta.requestId` is not the entry's current `requestId`.
+- **Mutations cancel reads.** The `pending` reducer of a mutation calls `cancelInFlight`, so a refetch that started before the mutation cannot overwrite the optimistic change.
+
+### Refreshing data after mutations
+
+- `saveLibraryEntry.pending` updates the list immediately and stores a snapshot. `rejected` restores the snapshot. In both cases the thunk then dispatches `fetchLibrary({ force: true })` to re-read the server state.
+- Collection, history and profile mutations re-fetch their slice the same way.
+- `trackView` only marks history as `invalidated`, so it is re-fetched the next time the History page is opened, without an extra request on every title view.
+- Logout, user switch, account deletion and going offline dispatch `clearUserData()`, which resets every personal slice.
+
+### Selectors
+
+| Selector | Memoized | Used by |
+|---|---|---|
+| `selectLibraryItems`, `selectCollectionsList`, `selectHistoryItems` | no | base selectors, return a stable empty array |
+| `selectCatalogEntry`, `selectDetailsEntry` | no | catalog and title pages |
+| `selectLibraryIndex` | **`createSelector`** | Map `key → entry`; library badges on every card |
+| `selectLibraryEntry` | uses the index | rating/status buttons on a title page |
+| `selectWatchlist` | **`createSelector`** | "You wanted to watch" shelf on the home page |
+| `selectLibraryStats` | **`createSelector`** | Stats page and profile overview; recomputed only when the library changes |
+
+### Offline and PWA integration
+
+The Service Worker (`src/sw.js`) is unchanged. TMDB thunks run offline as well: the Service Worker answers from its cache and marks the response (`X-Kadr-Cache`), and `services/tmdb.js` turns it into the `cache` flag shown as "Showing saved data". `store/index.js` subscribes to the verified connection status: when the connection returns it dispatches `revalidateAfterReconnect()`, which marks cached and failed entries as invalidated, so mounted screens re-fetch them. On returning to the tab, personal data older than one minute is invalidated (`invalidateUserData`).
 
 ---
 
@@ -161,8 +213,8 @@ The Service Worker is written by hand. `vite-plugin-pwa` (in `injectManifest` mo
 
 ### Offline page and connectivity indicator
 - `/offline` is a dedicated route in the app. `public/offline.html` is a self-contained static page in the pre-cache. The Service Worker serves it when navigation fails and the page has never been visited. Both pages include a **Retry connection** button.
-- The navbar shows an **Online / Offline** indicator, with a banner under it while offline. The status does not rely only on `navigator.onLine`. It is confirmed by a real `HEAD` request (`services/connection.js`) at startup, on the `online` event and whenever a request fails, and it is shared with TanStack Query's `onlineManager`.
-- Visited pages and cached public data stay available offline. TanStack Query refetches stale data automatically once the connection returns.
+- The navbar shows an **Online / Offline** indicator, with a banner under it while offline. The status does not rely only on `navigator.onLine`. It is confirmed by a real `HEAD` request (`services/connection.js`) at startup, on the `online` event and whenever a request fails, and the Redux store subscribes to it.
+- Visited pages and cached public data stay available offline. When the connection returns, `revalidateAfterReconnect()` re-fetches cached and failed data automatically.
 
 ### Mobile
 The layout works from 320 px wide in both portrait and landscape: a burger menu, single-column forms and cards, and no horizontal scrolling. On touch screens, controls have targets of at least 44×44 px. Form fields use 16 px text so iOS does not zoom in.

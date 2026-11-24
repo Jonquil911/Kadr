@@ -1,9 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { useDispatch } from 'react-redux';
 import { toast } from 'sonner';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import { queryKeys } from '../../services/queryKeys';
+import { clearUserData } from '../../store/sessionActions';
 
 export function ConnectionIndicator() {
   const online = useOnlineStatus();
@@ -25,18 +25,18 @@ export function ConnectionIndicator() {
 // Уходя офлайн, сбрасываем из памяти личные данные — офлайн видны только публичные данные TMDB
 export function OfflineBanner() {
   const online = useOnlineStatus();
-  const queryClient = useQueryClient();
+  const dispatch = useDispatch();
   const wasOffline = useRef(!online);
 
   useEffect(() => {
     if (!online) {
-      queryClient.resetQueries({ queryKey: queryKeys.user.all });
+      dispatch(clearUserData());
       wasOffline.current = true;
     } else if (wasOffline.current) {
       wasOffline.current = false;
       toast.success('Соединение восстановлено', { description: 'Обновляем данные.' });
     }
-  }, [online, queryClient]);
+  }, [online, dispatch]);
 
   if (online) return null;
 

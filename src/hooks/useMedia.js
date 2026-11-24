@@ -1,87 +1,78 @@
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
-  fetchCollectionList,
-  fetchGenres,
-  fetchMediaDetails,
-  fetchMediaList,
-  fetchTrending,
-} from '../services/tmdb';
-import { CACHE_TIME, queryKeys } from '../services/queryKeys';
+  catalogKeys,
+  fetchCatalogList,
+  fetchCollectionShelf,
+  fetchGenreList,
+  fetchTrendingList,
+  selectCatalogEntry,
+} from '../store/slices/catalogSlice';
+import { fetchDetails, selectDetailsEntry } from '../store/slices/detailsSlice';
+import { useCachedQuery } from './useStoreQuery';
 
 /*
- * PWA: запросы к публичному TMDB выполняются и офлайн (networkMode: 'offlineFirst') —
- * ответ может прийти из кэша Service Worker. Данные, пришедшие из кэша (флаг cache),
- * сразу считаются устаревшими, чтобы при возвращении сети они перезапросились.
+ * Данные TMDB из Redux. Запросы идут и офлайн: Service Worker может ответить из своего кэша,
+ * а такие данные (флаг cache) считаются устаревшими и перезапрашиваются при возврате сети.
  */
-const OFFLINE_FIRST = { networkMode: 'offlineFirst' };
-const staleUnlessCached = (ms) => (query) => (query.state.data?.cache ? 0 : ms);
 
 /**
- * Каталог с фильтрами. Ключ кэша включает все фильтры, поэтому каждая комбинация
- * (тип, поиск, жанр, год, рейтинг, сортировка, страница) кэшируется отдельно.
- * signal от TanStack Query отменяет устаревший запрос, когда фильтры меняются быстрее,
- * чем приходит ответ, — старый ответ не перезапишет новый.
+ * Каталог с фильтрами. Ключ записи включает все фильтры, поэтому каждая комбинация
+ * кэшируется отдельно. При смене фильтров прошлый запрос отменяется.
  */
 export function useMediaList(filters) {
-  return useQuery({
-    queryKey: queryKeys.tmdb.list(filters),
-    queryFn: ({ signal }) => fetchMediaList(filters, signal),
-    staleTime: staleUnlessCached(CACHE_TIME.catalog),
-    ...OFFLINE_FIRST,
-    placeholderData: keepPreviousData, // при смене страницы старый список виден, пока грузится новый
+  const key = catalogKeys.list(filters);
+  const entry = useSelector((state) => selectCatalogEntry(state, key));
+  const query = useCachedQuery({
+    key,
+    entry,
+    abortOnKeyChange: true,
+    request: (options) => fetchCatalogList({ filters, ...options }),
   });
+
+  // при смене страницы старый список виден (приглушённым), пока грузится новый
+  const previous = useRef(undefined);
+  useEffect(() => {
+    if (query.data) previous.current = query.data;
+  }, [query.data]);
+  const isPlaceholderData = query.data === undefined && previous.current !== undefined && !query.isError;
+  const data = query.data ?? (query.isError ? undefined : previous.current);
+
+  return { ...query, data, isPlaceholderData, isPending: data === undefined && !query.isError };
 }
 
 export function useTrending(mediaType = 'all') {
-  return useQuery({
-    queryKey: queryKeys.tmdb.trending(mediaType),
-    queryFn: ({ signal }) => fetchTrending(mediaType, signal),
-    staleTime: staleUnlessCached(CACHE_TIME.catalog),
-    ...OFFLINE_FIRST,
-  });
+  const key = catalogKeys.trending(mediaType);
+  const entry = useSelector((state) => selectCatalogEntry(state, key));
+  return useCachedQuery({ key, entry, request: (options) => fetchTrendingList({ mediaType, ...options }) });
 }
 
 export function useMediaCollection(mediaType, list) {
-  return useQuery({
-    queryKey: queryKeys.tmdb.collection(mediaType, list),
-    queryFn: ({ signal }) => fetchCollectionList(mediaType, list, signal),
-    staleTime: staleUnlessCached(CACHE_TIME.catalog),
-    ...OFFLINE_FIRST,
-  });
+  const key = catalogKeys.collection(mediaType, list);
+  const entry = useSelector((state) => selectCatalogEntry(state, key));
+  return useCachedQuery({ key, entry, request: (options) => fetchCollectionShelf({ mediaType, list, ...options }) });
 }
 
 export function useGenres(mediaType) {
-  return useQuery({
-    queryKey: queryKeys.tmdb.genres(mediaType),
-    queryFn: ({ signal }) => fetchGenres(mediaType, signal),
-    staleTime: CACHE_TIME.genres,
-    gcTime: CACHE_TIME.genres,
-    ...OFFLINE_FIRST,
-  });
+  const key = catalogKeys.genres(mediaType);
+  const entry = useSelector((state) => selectCatalogEntry(state, key));
+  return useCachedQuery({ key, entry, request: (options) => fetchGenreList({ mediaType, ...options }) });
 }
 
 export function useMediaDetails(mediaType, id) {
-  return useQuery({
-    queryKey: queryKeys.tmdb.details(mediaType, id),
-    queryFn: ({ signal }) => fetchMediaDetails(mediaType, id, signal),
-    staleTime: staleUnlessCached(CACHE_TIME.details),
-    ...OFFLINE_FIRST,
-    enabled: Boolean(id) && (mediaType === 'movie' || mediaType === 'tv'),
+  const valid = Boolean(id) && (mediaType === 'movie' || mediaType === 'tv');
+  const entry = useSelector((state) => selectDetailsEntry(state, mediaType, String(id)));
+  return useCachedQuery({
+    key: `${mediaType}:${id}`,
+    entry,
+    enabled: valid,
+    abortOnKeyChange: true,
+    request: (options) => fetchDetails({ mediaType, id: String(id), ...options }),
   });
 }
 
-/** Предзагрузка карточки при наведении — переход на страницу фильма получается мгновенным. */
+/** Предзагрузка карточки при наведении: если данные свежие или уже грузятся, thunk не запустится. */
 export function usePrefetchDetails() {
-  const queryClient = useQueryClient();
-  return useCallback(
-    (mediaType, id) =>
-      queryClient.prefetchQuery({
-        queryKey: queryKeys.tmdb.details(mediaType, id),
-        queryFn: ({ signal }) => fetchMediaDetails(mediaType, id, signal),
-        staleTime: staleUnlessCached(CACHE_TIME.details),
-        ...OFFLINE_FIRST,
-      }),
-    [queryClient],
-  );
+  const dispatch = useDispatch();
+  return useCallback((mediaType, id) => dispatch(fetchDetails({ mediaType, id: String(id) })), [dispatch]);
 }

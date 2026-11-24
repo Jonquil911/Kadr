@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -7,18 +7,22 @@ import {
   resendVerificationEmail,
   updateAccountProfile,
 } from '../services/authService';
-import { CACHE_TIME, queryKeys } from '../services/queryKeys';
-import { exportUserData, getUserProfile, updateUserProfileDoc } from '../services/userDataService';
+import { exportUserData } from '../services/userDataService';
+import { clearUserData } from '../store/sessionActions';
+import { fetchUserProfile, selectProfileState, updateProfileDoc } from '../store/slices/profileSlice';
 import { getErrorMessage } from '../utils/errors';
+import { useAsyncAction, useCachedQuery } from './useStoreQuery';
 
 export function useUserProfile() {
   const { user } = useAuth();
   const uid = user?.uid;
-  return useQuery({
-    queryKey: queryKeys.user.profile(uid),
-    queryFn: () => getUserProfile(uid),
+  const state = useSelector(selectProfileState);
+  return useCachedQuery({
+    key: uid,
+    entry: state.uid === uid ? state : undefined,
     enabled: Boolean(uid),
-    staleTime: CACHE_TIME.user,
+    requiresOnline: true,
+    request: (options) => fetchUserProfile({ uid, ...options }),
   });
 }
 
@@ -27,43 +31,36 @@ const notifyError = (error) => toast.error(getErrorMessage(error));
 /** Имя и фото меняются и в Firebase Auth, и в документе профиля. */
 export function useUpdateAccount() {
   const { user, refreshUser } = useAuth();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ displayName, photoURL, ...profilePatch }) => {
+  const dispatch = useDispatch();
+  return useAsyncAction(
+    async ({ displayName, photoURL, ...profilePatch }) => {
       await updateAccountProfile({ displayName, photoURL });
-      if (Object.keys(profilePatch).length) await updateUserProfileDoc(user.uid, profilePatch);
+      if (Object.keys(profilePatch).length) {
+        await dispatch(updateProfileDoc({ uid: user.uid, patch: profilePatch })).unwrap();
+      }
       await refreshUser();
     },
-    onSuccess: () => toast.success('Профиль сохранён'),
-    onError: notifyError,
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.user.profile(user?.uid) }),
-  });
+    { onSuccess: () => toast.success('Профиль сохранён'), onError: notifyError },
+  );
 }
 
-/** Настройки, которые хранятся только в Firestore (цель на год, любимые жанры и т. п.). */
+/** Настройки, которые хранятся только в Firestore (цель на год и т. п.) — оптимистично. */
 export function useUpdatePreferences() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const key = queryKeys.user.profile(user?.uid);
-  return useMutation({
-    mutationFn: (patch) => updateUserProfileDoc(user.uid, patch),
-    onMutate: async (patch) => {
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData(key);
-      queryClient.setQueryData(key, (old) => ({ ...old, ...patch }));
-      return { previous };
-    },
-    onError: (error, _patch, context) => {
-      queryClient.setQueryData(key, context?.previous);
-      notifyError(error);
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
-  });
+  const dispatch = useDispatch();
+  return useAsyncAction(
+    (patch) => dispatch(updateProfileDoc({ uid: user.uid, patch, optimistic: true })).unwrap(),
+    { onError: notifyError },
+  );
 }
 
+/*
+ * Операции ниже — работа с аккаунтом Firebase Auth, а не с данными в хранилище,
+ * поэтому они остаются локальными действиями без Redux (авторизация живёт в AuthContext).
+ */
+
 export function useChangePassword() {
-  return useMutation({
-    mutationFn: ({ currentPassword, newPassword }) => changePassword(currentPassword, newPassword),
+  return useAsyncAction(({ currentPassword, newPassword }) => changePassword(currentPassword, newPassword), {
     onSuccess: () => toast.success('Пароль изменён'),
     onError: notifyError,
   });
@@ -71,18 +68,21 @@ export function useChangePassword() {
 
 export function useResendVerification() {
   const { refreshUser } = useAuth();
-  return useMutation({
-    mutationFn: resendVerificationEmail,
-    onSuccess: () => toast.success('Письмо отправлено. Проверьте почту и папку «Спам».'),
-    onError: notifyError,
-    onSettled: () => refreshUser().catch(() => {}),
-  });
+  return useAsyncAction(
+    async () => {
+      try {
+        await resendVerificationEmail();
+      } finally {
+        refreshUser().catch(() => {});
+      }
+    },
+    { onSuccess: () => toast.success('Письмо отправлено. Проверьте почту и папку «Спам».'), onError: notifyError },
+  );
 }
 
 export function useRefreshVerification() {
   const { refreshUser } = useAuth();
-  return useMutation({
-    mutationFn: refreshUser,
+  return useAsyncAction(refreshUser, {
     onSuccess: (fresh) =>
       fresh?.emailVerified ? toast.success('Почта подтверждена') : toast.info('Почта пока не подтверждена'),
     onError: notifyError,
@@ -91,8 +91,7 @@ export function useRefreshVerification() {
 
 export function useExportData() {
   const { user } = useAuth();
-  return useMutation({
-    mutationFn: () => exportUserData(user.uid),
+  return useAsyncAction(() => exportUserData(user.uid), {
     onSuccess: (data) => {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -108,11 +107,10 @@ export function useExportData() {
 }
 
 export function useDeleteAccount() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (password) => deleteAccount(password),
+  const dispatch = useDispatch();
+  return useAsyncAction((password) => deleteAccount(password), {
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: queryKeys.user.all });
+      dispatch(clearUserData());
       toast.success('Аккаунт и все данные удалены');
     },
     onError: notifyError,
